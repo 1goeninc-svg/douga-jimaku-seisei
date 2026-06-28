@@ -1,0 +1,25 @@
+# 環境変数（APIキーを絶対にコミットしない）
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# アップロードされた動画ファイル（一時ファイル）
+uploads/
+temp_uploads/
+
+# 生成ファイル
+*.srt
+
+# macOS
+.DS_Store
+
+# macOS アプリ（バイナリ）
+字幕をつける.app/
+
+# Vercel
+.vercel

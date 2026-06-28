@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="字幕生成">
+  <title>動画字幕生成</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <span class="logo">🎬</span>
+    <div>
+      <h1>動画字幕生成</h1>
+      <p class="header-sub">AI で音声をテキストに変換（最大 25 MB）</p>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- ── アップロードカード ── -->
+  <section class="card" id="upload-card">
+    <h2 class="card-title">ファイルを選択</h2>
+
+    <div class="dropzone" id="dropzone" role="button" tabindex="0">
+      <div class="dropzone-icon">📁</div>
+      <p class="dropzone-main">ここにドラッグ＆ドロップ</p>
+      <p class="dropzone-sub">または<span class="link">タップしてファイルを選択</span></p>
+      <p class="dropzone-types">mp3 · m4a · wav · mp4 · mov など（上限 25 MB）</p>
+    </div>
+    <input type="file" id="file-input" hidden
+           accept="audio/*,video/*,.mp3,.m4a,.wav,.ogg,.mp4,.mov,.mkv,.webm">
+
+    <div class="file-pill" id="file-pill" hidden>
+      <span class="file-pill-icon">🎞</span>
+      <span id="file-pill-name"></span>
+      <span class="file-size" id="file-size"></span>
+      <button class="file-pill-remove" onclick="clearFile()">✕</button>
+    </div>
+
+    <div class="settings">
+      <div class="settings-row">
+        <div class="field">
+          <label class="field-label" for="model">モデル</label>
+          <select id="model">
+            <option value="turbo" selected>Turbo（速い・高精度）</option>
+            <option value="large">Large（最高精度）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="lang">言語</label>
+          <select id="lang">
+            <option value="ja" selected>日本語</option>
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+            <option value="ko">한국어</option>
+            <option value="auto">自動検出</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="upload-progress" id="upload-progress" hidden>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <span class="progress-label" id="progress-label">アップロード中…</span>
+    </div>
+
+    <button class="btn btn-primary" id="submit-btn" onclick="startProcess()" disabled>
+      テキストを抽出する
+    </button>
+  </section>
+
+  <!-- ── 処理中 / 結果カード ── -->
+  <section class="card card-process" id="process-card" hidden>
+    <div class="process-header">
+      <div id="status-badge"></div>
+      <span class="process-filename" id="process-filename"></span>
+    </div>
+
+    <div id="result-wrap" hidden>
+      <div class="result-header">
+        <span class="result-label">認識テキスト</span>
+        <button class="btn-copy" id="copy-btn" onclick="copyResult()">コピー</button>
+      </div>
+      <textarea class="result-area" id="result-area" readonly></textarea>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

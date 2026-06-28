@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x \"/Users/ishiitaishi/Documents/動画字幕生成/Macセットアップ.sh\" \"/Users/ishiitaishi/Documents/動画字幕生成/字幕をつける.sh\" \"/Users/ishiitaishi/Documents/動画字幕生成/字幕サーバーを起動.command\")",
+      "Bash(bash Macセットアップ.sh)",
+      "Bash(osacompile -o \"字幕をつける.app\" \"字幕をつける.applescript\")",
+      "Bash(xattr -cr \"字幕をつける.app\")",
+      "Bash(python3 -c \"import flask; print\\('Flask', flask.__version__\\)\")",
+      "Bash(python3 -m pip install flask)",
+      "Bash(python3 app.py)",
+      "Bash(curl -s http://localhost:5000/)",
+      "Bash(lsof -ti:5000)",
+      "Bash(xargs kill -9)",
+      "Bash(open http://localhost:8080)",
+      "Bash(lsof -ti:8080)",
+      "Bash(python3 -)",
+      "Bash(gh --version)",
+      "Bash(git --version)",
+      "Bash(npm install *)",
+      "Bash(vercel --version)",
+      "Bash(npm bin *)",
+      "Bash(npm root *)",
+      "Bash(find /Users/ishiitaishi -name \"vercel\" -type f 2>/dev/null | head -3 *)",
+      "Bash(brew install *)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}
