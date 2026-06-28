@@ -68,10 +68,12 @@ def transcribe():
                 file=(f.filename, audio_file.read()),
                 model=groq_model,
                 language=lang if lang != "auto" else None,
-                response_format="text",
+                response_format="verbose_json",
             )
-        # response_format="text" → 文字列が直接返る
-        return jsonify({"text": str(result).strip()})
+        # セグメントごとに改行して読みやすくする
+        lines = [seg.text.strip() for seg in result.segments if seg.text.strip()]
+        text = "\n".join(lines)
+        return jsonify({"text": text})
 
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
