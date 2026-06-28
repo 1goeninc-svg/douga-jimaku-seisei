@@ -447,23 +447,67 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .btn-copy:hover  { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn-copy.copied { background: var(--success); border-color: var(--success); color: #fff; }
 
-.result-area {
-  width: 100%;
-  min-height: 180px;
-  max-height: 420px;
+/* ── セグメントリスト ────────────────────────────────── */
+.segment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.segment-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: -apple-system, 'Helvetica Neue', sans-serif;
-  font-size: 0.95rem;
-  line-height: 1.75;
-  padding: 14px;
-  resize: vertical;
-  overflow-y: auto;
+  transition: border-color 0.15s;
 }
 
-.result-area:focus { outline: 2px solid var(--accent); }
+.segment-item:hover { border-color: rgba(124, 111, 255, 0.4); }
+
+.segment-num {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+  flex-shrink: 0;
+  min-width: 1.5em;
+  line-height: 1.6;
+}
+
+.segment-text {
+  flex: 1;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  word-break: break-all;
+  color: var(--text);
+}
+
+.segment-copy-btn {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 4px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.segment-copy-btn:hover  { background: var(--accent); border-color: var(--accent); color: #fff; }
+.segment-copy-btn.copied { background: var(--success); border-color: var(--success); color: #fff; }
+
+.segment-empty {
+  font-size: 0.9rem;
+  color: var(--text2);
+  padding: 16px 0;
+  text-align: center;
+}
 
 /* ── 履歴リスト ──────────────────────────────────────── */
 .history-list {

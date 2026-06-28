@@ -2,15 +2,15 @@
 
 const MAX_MB = 25;
 
-const fileInput     = document.getElementById('file-input');
-const dropzone      = document.getElementById('dropzone');
-const filePill      = document.getElementById('file-pill');
-const filePillName  = document.getElementById('file-pill-name');
-const fileSizeEl    = document.getElementById('file-size');
-const submitBtn     = document.getElementById('submit-btn');
-const processCard   = document.getElementById('process-card');
-const resultWrap    = document.getElementById('result-wrap');
-const resultArea    = document.getElementById('result-area');
+const fileInput    = document.getElementById('file-input');
+const dropzone     = document.getElementById('dropzone');
+const filePill     = document.getElementById('file-pill');
+const filePillName = document.getElementById('file-pill-name');
+const fileSizeEl   = document.getElementById('file-size');
+const submitBtn    = document.getElementById('submit-btn');
+const processCard  = document.getElementById('process-card');
+const resultWrap   = document.getElementById('result-wrap');
+const segmentList  = document.getElementById('segment-list');
 
 let selectedFile = null;
 
@@ -49,8 +49,6 @@ dropzone.addEventListener('drop', e => {
 });
 
 // ── 音声前処理（16 kHz モノラル WAV に変換） ─────────
-// Whisper は 16kHz モノラルで学習されているため、動画から音声のみを
-// 抽出してリサンプリングすることで認識精度が大きく向上する。
 async function preprocessToWav(file) {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return null;
@@ -61,7 +59,6 @@ async function preprocessToWav(file) {
     const buf = await ctx.decodeAudioData(await file.arrayBuffer());
     await ctx.close();
 
-    // 全チャンネルを平均してモノラルに
     const numCh = buf.numberOfChannels;
     const len   = buf.length;
     const mono  = new Float32Array(len);
@@ -70,7 +67,6 @@ async function preprocessToWav(file) {
       for (let i = 0; i < len; i++) mono[i] += ch[i] / numCh;
     }
 
-    // 16-bit PCM WAV ヘッダー + サンプルデータ
     const wavBuf = new ArrayBuffer(44 + len * 2);
     const view   = new DataView(wavBuf);
     const str    = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
@@ -79,8 +75,8 @@ async function preprocessToWav(file) {
     str(8, 'WAVE');
     str(12, 'fmt ');
     view.setUint32(16, 16,               true);
-    view.setUint16(20, 1,                true);  // PCM
-    view.setUint16(22, 1,                true);  // mono
+    view.setUint16(20, 1,                true);
+    view.setUint16(22, 1,                true);
     view.setUint32(24, SAMPLE_RATE,      true);
     view.setUint32(28, SAMPLE_RATE * 2,  true);
     view.setUint16(32, 2,                true);
@@ -95,12 +91,61 @@ async function preprocessToWav(file) {
     }
 
     const blob = new Blob([wavBuf], { type: 'audio/wav' });
-    // 24 MB 超は Groq の上限を超えるので元ファイルにフォールバック
     if (blob.size > 24 * 1024 * 1024) return null;
     return blob;
   } catch (_) {
-    return null;  // デコード失敗時は元ファイルを使用
+    return null;
   }
+}
+
+// ── セグメント描画 ────────────────────────────────────
+const CIRCLES = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟';
+
+function circledNum(n) {
+  return n <= CIRCLES.length ? CIRCLES[n - 1] : `${n}.`;
+}
+
+function renderSegments(text) {
+  segmentList.innerHTML = '';
+  const lines = text.split('\n').filter(l => l.trim());
+
+  if (!lines.length) {
+    const empty = document.createElement('p');
+    empty.className = 'segment-empty';
+    empty.textContent = '（テキストが認識されませんでした）';
+    segmentList.appendChild(empty);
+    return;
+  }
+
+  lines.forEach((line, i) => {
+    const item = document.createElement('div');
+    item.className = 'segment-item';
+    item.innerHTML = `
+      <span class="segment-num">${circledNum(i + 1)}</span>
+      <p class="segment-text">${escHtml(line)}</p>
+      <button class="segment-copy-btn" data-text="${escAttr(line)}">コピー</button>
+    `;
+    item.querySelector('.segment-copy-btn').addEventListener('click', function () {
+      navigator.clipboard.writeText(this.dataset.text).then(() => {
+        this.textContent = '✓';
+        this.classList.add('copied');
+        setTimeout(() => { this.textContent = 'コピー'; this.classList.remove('copied'); }, 1500);
+      });
+    });
+    segmentList.appendChild(item);
+  });
+}
+
+// ── 全てコピー ────────────────────────────────────────
+function copyAll() {
+  const lines = Array.from(segmentList.querySelectorAll('.segment-text')).map(el => el.textContent);
+  if (!lines.length) return;
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'コピーしました！';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '全てコピー'; btn.classList.remove('copied'); }, 2000);
+  });
 }
 
 // ── 処理開始 ──────────────────────────────────────────
@@ -108,13 +153,12 @@ async function startProcess() {
   if (!selectedFile) return;
 
   submitBtn.disabled = true;
-  resultArea.value   = '';
+  segmentList.innerHTML = '';
   resultWrap.hidden  = true;
   processCard.hidden = false;
   document.getElementById('process-filename').textContent = selectedFile.name;
   setStatus('processing', '音声を最適化中…');
 
-  // 動画→16kHz モノラル WAV に変換（精度向上）
   const wav = await preprocessToWav(selectedFile);
   const uploadFile = wav
     ? new File([wav], selectedFile.name.replace(/\.[^.]+$/, '') + '_audio.wav', { type: 'audio/wav' })
@@ -149,7 +193,7 @@ async function startProcess() {
     progressWrap.hidden = true;
     if (xhr.status === 200) {
       const { text } = JSON.parse(xhr.responseText);
-      resultArea.value  = text || '（テキストが認識されませんでした）';
+      renderSegments(text || '');
       resultWrap.hidden = false;
       setStatus('done', '✅ 完了！');
     } else {
@@ -170,18 +214,7 @@ async function startProcess() {
   xhr.send(form);
 }
 
-// ── コピー ────────────────────────────────────────────
-function copyResult() {
-  if (!resultArea.value) return;
-  navigator.clipboard.writeText(resultArea.value).then(() => {
-    const btn = document.getElementById('copy-btn');
-    btn.textContent = 'コピーしました！';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'コピー'; btn.classList.remove('copied'); }, 2000);
-  });
-}
-
-// ── ステータスバッジ ──────────────────────────────────
+// ── ユーティリティ ────────────────────────────────────
 function setStatus(type, text) {
   const badge   = document.getElementById('status-badge');
   const spinner = type === 'processing' ? '<span class="spinner"></span>' : '';
@@ -189,5 +222,9 @@ function setStatus(type, text) {
 }
 
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escAttr(s) {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
