@@ -71,7 +71,12 @@ def transcribe():
                 response_format="verbose_json",
             )
         # セグメントごとに改行して読みやすくする
-        lines = [seg.text.strip() for seg in result.segments if seg.text.strip()]
+        # SDK のバージョンによって dict / object どちらでも動くように対応
+        lines = []
+        for seg in result.segments:
+            t = (seg["text"] if isinstance(seg, dict) else seg.text).strip()
+            if t:
+                lines.append(t)
         text = "\n".join(lines)
         return jsonify({"text": text})
 
