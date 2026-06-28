@@ -26,6 +26,14 @@ GROQ_MODELS = {
     "large":  "whisper-large-v3",          # 最高精度
 }
 
+# 言語別プロンプト：Whisper に語彙・文体のヒントを与えて精度向上
+PROMPTS = {
+    "ja": "以下は日本語の音声です。句読点を正しく使用してください。",
+    "en": "The following is English audio. Please use correct punctuation.",
+    "zh": "以下是中文音频。",
+    "ko": "다음은 한국어 오디오입니다.",
+}
+
 
 @app.route("/")
 def index():
@@ -62,6 +70,8 @@ def transcribe():
         tmp.write(data)
         tmp.close()
 
+        prompt = PROMPTS.get(lang, "") if lang != "auto" else ""
+
         client = Groq(api_key=api_key)
         with open(tmp.name, "rb") as audio_file:
             result = client.audio.transcriptions.create(
@@ -69,6 +79,7 @@ def transcribe():
                 model=groq_model,
                 language=lang if lang != "auto" else None,
                 response_format="verbose_json",
+                prompt=prompt or None,
             )
         # セグメントごとに改行して読みやすくする
         # SDK のバージョンによって dict / object どちらでも動くように対応

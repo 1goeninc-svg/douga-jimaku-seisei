@@ -24,14 +24,14 @@ function onFileSelected(file) {
   selectedFile = file;
   filePillName.textContent = file.name;
   fileSizeEl.textContent   = mb.toFixed(1) + ' MB';
-  filePill.hidden   = false;
+  filePill.hidden    = false;
   submitBtn.disabled = false;
 }
 
 function clearFile() {
   selectedFile = null;
-  fileInput.value = '';
-  filePill.hidden   = true;
+  fileInput.value    = '';
+  filePill.hidden    = true;
   submitBtn.disabled = true;
 }
 
@@ -48,19 +48,82 @@ dropzone.addEventListener('drop', e => {
   if (e.dataTransfer.files[0]) onFileSelected(e.dataTransfer.files[0]);
 });
 
+// ── 音声前処理（16 kHz モノラル WAV に変換） ─────────
+// Whisper は 16kHz モノラルで学習されているため、動画から音声のみを
+// 抽出してリサンプリングすることで認識精度が大きく向上する。
+async function preprocessToWav(file) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+
+  const SAMPLE_RATE = 16000;
+  try {
+    const ctx = new AudioCtx({ sampleRate: SAMPLE_RATE });
+    const buf = await ctx.decodeAudioData(await file.arrayBuffer());
+    await ctx.close();
+
+    // 全チャンネルを平均してモノラルに
+    const numCh = buf.numberOfChannels;
+    const len   = buf.length;
+    const mono  = new Float32Array(len);
+    for (let c = 0; c < numCh; c++) {
+      const ch = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) mono[i] += ch[i] / numCh;
+    }
+
+    // 16-bit PCM WAV ヘッダー + サンプルデータ
+    const wavBuf = new ArrayBuffer(44 + len * 2);
+    const view   = new DataView(wavBuf);
+    const str    = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+    str(0, 'RIFF');
+    view.setUint32(4,  36 + len * 2,     true);
+    str(8, 'WAVE');
+    str(12, 'fmt ');
+    view.setUint32(16, 16,               true);
+    view.setUint16(20, 1,                true);  // PCM
+    view.setUint16(22, 1,                true);  // mono
+    view.setUint32(24, SAMPLE_RATE,      true);
+    view.setUint32(28, SAMPLE_RATE * 2,  true);
+    view.setUint16(32, 2,                true);
+    view.setUint16(34, 16,               true);
+    str(36, 'data');
+    view.setUint32(40, len * 2,          true);
+    let off = 44;
+    for (let i = 0; i < len; i++) {
+      const s = Math.max(-1, Math.min(1, mono[i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      off += 2;
+    }
+
+    const blob = new Blob([wavBuf], { type: 'audio/wav' });
+    // 24 MB 超は Groq の上限を超えるので元ファイルにフォールバック
+    if (blob.size > 24 * 1024 * 1024) return null;
+    return blob;
+  } catch (_) {
+    return null;  // デコード失敗時は元ファイルを使用
+  }
+}
+
 // ── 処理開始 ──────────────────────────────────────────
-function startProcess() {
+async function startProcess() {
   if (!selectedFile) return;
 
-  submitBtn.disabled  = true;
-  resultArea.value    = '';
-  resultWrap.hidden   = true;
-  processCard.hidden  = false;
+  submitBtn.disabled = true;
+  resultArea.value   = '';
+  resultWrap.hidden  = true;
+  processCard.hidden = false;
   document.getElementById('process-filename').textContent = selectedFile.name;
+  setStatus('processing', '音声を最適化中…');
+
+  // 動画→16kHz モノラル WAV に変換（精度向上）
+  const wav = await preprocessToWav(selectedFile);
+  const uploadFile = wav
+    ? new File([wav], selectedFile.name.replace(/\.[^.]+$/, '') + '_audio.wav', { type: 'audio/wav' })
+    : selectedFile;
+
   setStatus('processing', 'アップロード中…');
 
   const form = new FormData();
-  form.append('audio', selectedFile);
+  form.append('audio', uploadFile);
   form.append('model', document.getElementById('model').value);
   form.append('lang',  document.getElementById('lang').value);
 
