@@ -1,6 +1,6 @@
 'use strict';
 
-const MAX_MB = 25;
+const MAX_MB = 500; // 動画は変換後 WAV がずっと小さくなるため元ファイルは 500MB まで許可
 
 const fileInput    = document.getElementById('file-input');
 const dropzone     = document.getElementById('dropzone');
@@ -18,7 +18,7 @@ let selectedFile = null;
 function onFileSelected(file) {
   const mb = file.size / 1024 / 1024;
   if (mb > MAX_MB) {
-    alert(`ファイルが大きすぎます（${mb.toFixed(0)} MB）。\n${MAX_MB} MB 以下のファイルを選択してください。`);
+    alert(`ファイルが大きすぎます（${mb.toFixed(0)} MB）。\n${MAX_MB} MB 以下のファイルを選択してください。\n（音声の長さは約 13 分まで対応）`);
     return;
   }
   selectedFile = file;
@@ -113,10 +113,10 @@ async function preprocessToWav(file) {
     }
 
     const blob = new Blob([wavBuf], { type: 'audio/wav' });
-    if (blob.size > 24 * 1024 * 1024) return null;
-    return blob;
+    if (blob.size > 24 * 1024 * 1024) return { blob: null, reason: 'too_long' };
+    return { blob, reason: null };
   } catch (_) {
-    return null;
+    return { blob: null, reason: 'decode_failed' };
   }
 }
 
@@ -181,14 +181,22 @@ async function startProcess() {
   document.getElementById('process-filename').textContent = selectedFile.name;
   setStatus('processing', '音声を最適化中…');
 
-  const wav = await preprocessToWav(selectedFile);
+  const { blob: wav, reason } = await preprocessToWav(selectedFile);
 
-  // Groq が非対応の形式（.mov 等）は前処理失敗時にアップロード不可
-  const GROQ_UNSUPPORTED = /\.(mov|avi|wmv|flv)$/i;
-  if (!wav && GROQ_UNSUPPORTED.test(selectedFile.name)) {
-    setStatus('error', '❌ 変換できませんでした。写真アプリで「ファイルに保存（MP4）」で書き出してから再試行してください。');
-    submitBtn.disabled = false;
-    return;
+  if (!wav) {
+    if (reason === 'too_long') {
+      setStatus('error', '❌ 音声が長すぎます（約 13 分まで対応）。動画を分割してアップロードしてください。');
+    } else {
+      // デコード失敗：Groq 非対応形式のまま送ると確実に失敗する拡張子はガード
+      const GROQ_UNSUPPORTED = /\.(avi|wmv|flv)$/i;
+      if (GROQ_UNSUPPORTED.test(selectedFile.name)) {
+        setStatus('error', '❌ この形式は処理できません。MP4 または M4A に変換してください。');
+        submitBtn.disabled = false;
+        return;
+      }
+      // .mov / その他：Groq がそのまま受け付ける可能性があるので一旦送る
+    }
+    if (reason === 'too_long') { submitBtn.disabled = false; return; }
   }
 
   const uploadFile = wav
