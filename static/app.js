@@ -49,43 +49,65 @@ dropzone.addEventListener('drop', e => {
 });
 
 // ── 音声前処理（16 kHz モノラル WAV に変換） ─────────
+// iOS Safari では AudioContext({ sampleRate }) が不安定なため
+// OfflineAudioContext でリサンプリングする方式を使用する。
 async function preprocessToWav(file) {
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return null;
+  const AudioCtx   = window.AudioContext   || window.webkitAudioContext;
+  const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!AudioCtx || !OfflineCtx) return null;
 
-  const SAMPLE_RATE = 16000;
+  const TARGET_RATE = 16000;
   try {
-    const ctx = new AudioCtx({ sampleRate: SAMPLE_RATE });
-    const buf = await ctx.decodeAudioData(await file.arrayBuffer());
-    await ctx.close();
+    // Step 1: ネイティブレートでデコード（sampleRate 指定なし → iOS 互換）
+    const tempCtx = new AudioCtx();
+    const audioBuffer = await tempCtx.decodeAudioData(await file.arrayBuffer());
 
-    const numCh = buf.numberOfChannels;
-    const len   = buf.length;
-    const mono  = new Float32Array(len);
+    // Step 2: 全チャンネルをモノラルに混合
+    const numCh     = audioBuffer.numberOfChannels;
+    const nativeLen = audioBuffer.length;
+    const nativeRate= audioBuffer.sampleRate;
+    const mono      = new Float32Array(nativeLen);
     for (let c = 0; c < numCh; c++) {
-      const ch = buf.getChannelData(c);
-      for (let i = 0; i < len; i++) mono[i] += ch[i] / numCh;
+      const ch = audioBuffer.getChannelData(c);
+      for (let i = 0; i < nativeLen; i++) mono[i] += ch[i] / numCh;
     }
 
+    // Step 3: モノラル AudioBuffer を生成
+    const monoBuf = tempCtx.createBuffer(1, nativeLen, nativeRate);
+    monoBuf.copyToChannel(mono, 0);
+    await tempCtx.close();
+
+    // Step 4: OfflineAudioContext で 16 kHz にリサンプリング
+    const targetLen = Math.ceil(audioBuffer.duration * TARGET_RATE);
+    const offCtx    = new OfflineCtx(1, targetLen, TARGET_RATE);
+    const src       = offCtx.createBufferSource();
+    src.buffer      = monoBuf;
+    src.connect(offCtx.destination);
+    src.start();
+    const resampled = await offCtx.startRendering();
+    const samples   = resampled.getChannelData(0);
+
+    // Step 5: 16-bit PCM WAV にエンコード
+    const len    = samples.length;
     const wavBuf = new ArrayBuffer(44 + len * 2);
     const view   = new DataView(wavBuf);
     const str    = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
     str(0, 'RIFF');
-    view.setUint32(4,  36 + len * 2,     true);
+    view.setUint32(4,  36 + len * 2,       true);
     str(8, 'WAVE');
     str(12, 'fmt ');
-    view.setUint32(16, 16,               true);
-    view.setUint16(20, 1,                true);
-    view.setUint16(22, 1,                true);
-    view.setUint32(24, SAMPLE_RATE,      true);
-    view.setUint32(28, SAMPLE_RATE * 2,  true);
-    view.setUint16(32, 2,                true);
-    view.setUint16(34, 16,               true);
+    view.setUint32(16, 16,                  true);
+    view.setUint16(20, 1,                   true);  // PCM
+    view.setUint16(22, 1,                   true);  // mono
+    view.setUint32(24, TARGET_RATE,         true);
+    view.setUint32(28, TARGET_RATE * 2,     true);
+    view.setUint16(32, 2,                   true);
+    view.setUint16(34, 16,                  true);
     str(36, 'data');
-    view.setUint32(40, len * 2,          true);
+    view.setUint32(40, len * 2,             true);
     let off = 44;
     for (let i = 0; i < len; i++) {
-      const s = Math.max(-1, Math.min(1, mono[i]));
+      const s = Math.max(-1, Math.min(1, samples[i]));
       view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
       off += 2;
     }
@@ -160,6 +182,15 @@ async function startProcess() {
   setStatus('processing', '音声を最適化中…');
 
   const wav = await preprocessToWav(selectedFile);
+
+  // Groq が非対応の形式（.mov 等）は前処理失敗時にアップロード不可
+  const GROQ_UNSUPPORTED = /\.(mov|avi|wmv|flv)$/i;
+  if (!wav && GROQ_UNSUPPORTED.test(selectedFile.name)) {
+    setStatus('error', '❌ 変換できませんでした。写真アプリで「ファイルに保存（MP4）」で書き出してから再試行してください。');
+    submitBtn.disabled = false;
+    return;
+  }
+
   const uploadFile = wav
     ? new File([wav], selectedFile.name.replace(/\.[^.]+$/, '') + '_audio.wav', { type: 'audio/wav' })
     : selectedFile;
